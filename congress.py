@@ -3,8 +3,16 @@ import os
 
 BASE_URL = "https://api.congress.gov/v3"
 
-def call_endpoint(endpoint:str, params:dict[str,str]={}):
-    """Get information from the congress api"""
+def call_endpoint(endpoint:str, params:dict[str,str]={}) -> tuple[int, dict]:
+    """Get information from the congress api.
+
+    Args:
+        endpoint: the endpoint to call
+        params: Any query params to include
+
+    Returns:
+        a tuple containing the status code and dictionary with the contents
+    """
     if endpoint.startswith(BASE_URL):
         url = endpoint
     else:
@@ -13,12 +21,38 @@ def call_endpoint(endpoint:str, params:dict[str,str]={}):
     r = requests.get(url, auth=(api_key,''), params=params, headers={'accept': 'application/json'})
     return r.status_code, r.json()
 
-def list_bills(offset:int=0, limit:int=250, fromDate: str=None, toDate:str=None, congress:int=None):
-    """List the bills considered by Congress"""
+list_bills_schema = {
+    "name": "list_bills",
+    "description": "Lists bills being considered by Congress",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "offset": {"type": "integer",
+                       "description": "offset for the list of bills"},
+            "limit": {"type": "integer",
+                      "description": "the number of bills to return"},
+            "fromDate": {"type": "string",
+                         "description": "the date of the earliest bills to return"},
+            "toDate": {"type": "string",
+                       "description": "the date of the lastest bills to return"},
+            "congress": {"type": "integer",
+                         "description": "the number of the congress to gets bills from"}
+        }
+    }
+}
+
+def list_bills(offset:int=0, limit:int=250, fromDate: str=None, toDate:str=None, congress:int=None) -> list[str]:
+    """List the bills considered by Congress.
+
+    Args:
+
+    Returns:
+        A list of bill descriptions
+    """
     if congress is None:
         endpoint = "bill"
     else:
         endpoint = f"bill/{congress}"
     sc, resp = call_endpoint(endpoint, {"offset": offset, "limit": limit, "fromDateTime": fromDate, "toDateTime": toDate})
     if sc == 200:
-        return resp
+        return [bill['title'] for bill in resp['bills']]
