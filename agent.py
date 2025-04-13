@@ -10,7 +10,8 @@ For any object in a response that contains a url, call call_endpoint to get more
 MODEL = "gemini-2.0-flash"
 
 FUNCTIONS = [
-    (congress.list_bills_schema, congress.list_bills)
+    (congress.list_bills_schema, congress.list_bills),
+    (congress.call_endpoint_schema, congress.call_endpoint)
 ]
 
 class CongressAgent:
@@ -39,14 +40,19 @@ class CongressAgent:
             resp = self.gen_content(contents)
             while resp.text is None:
                 tool_call = resp.function_call
+                contents.append(types.Content(role="model", parts=[types.Part(function_call=tool_call)]))
                 function_name = tool_call.name
                 function = self.functions[function_name]
                 args = tool_call.args
                 print(f"-- calling {function_name}(**{args})")
-                result = function(**args)
-                result_part = types.Part.from_function_response(name=function_name,
-                                                                response={"result": result})
-                contents.append(types.Content(role="model", parts=[types.Part(function_call=tool_call)]))
-                contents.append(types.Content(role="user", parts=[result_part]))
+                try:
+                    result = function(**args)
+                    result_part = types.Part.from_function_response(name=function_name,
+                                                                    response={"result": result})
+                    contents.append(types.Content(role="user", parts=[result_part]))
+                except Exception as e:
+                    exception_part = types.Part.from_function_response(name=function_name,
+                                                                       response={"exception": str(e)})
+                    contents.append(types.Content(role="user", parts=[e]))
                 resp = self.gen_content(contents)
             print(resp.text)
