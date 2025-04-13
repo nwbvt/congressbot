@@ -32,16 +32,17 @@ list_bills_schema = {
             "limit": {"type": "integer",
                       "description": "the number of bills to return"},
             "fromDate": {"type": "string",
-                         "description": "the date of the earliest bills to return"},
+                         "description": "the date of the earliest bills to return, leave blank for no restriction"},
             "toDate": {"type": "string",
-                       "description": "the date of the lastest bills to return"},
+                       "description": "the date of the lastest bills to return, leave blank for no restriction"},
             "congress": {"type": "integer",
-                         "description": "the number of the congress to gets bills from"}
-        }
+                         "description": "the number of the congress to gets bills from, leave blank for the current congress"}
+        },
+        "required": []
     }
 }
 
-def list_bills(offset:int=0, limit:int=250, fromDate: str=None, toDate:str=None, congress:int=None) -> list[str]:
+def list_bills(offset:int=0, limit:int=250, fromDate: str=None, toDate:str=None, congress:int=None) -> list[map]:
     """List the bills considered by Congress.
 
     Args:
@@ -55,4 +56,4 @@ def list_bills(offset:int=0, limit:int=250, fromDate: str=None, toDate:str=None,
         endpoint = f"bill/{congress}"
     sc, resp = call_endpoint(endpoint, {"offset": offset, "limit": limit, "fromDateTime": fromDate, "toDateTime": toDate})
     if sc == 200:
-        return [bill['title'] for bill in resp['bills']]
+        return [bill for bill in resp['bills']]
