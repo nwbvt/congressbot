@@ -18,7 +18,7 @@ call_endpoint_schema = {
     }
 }
 
-def call_endpoint(endpoint:str, params:dict[str,str]={}) -> tuple[int, dict]:
+def call_endpoint(endpoint:str, params:dict[str,str]={}) -> dict:
     """Get information from the congress api."""
     if endpoint.startswith(BASE_URL):
         url = endpoint
@@ -26,7 +26,10 @@ def call_endpoint(endpoint:str, params:dict[str,str]={}) -> tuple[int, dict]:
         url = f"{BASE_URL}/{endpoint}"
     api_key = os.environ["CONGRESS_API_KEY"]
     r = requests.get(url, auth=(api_key,''), params=params, headers={'accept': 'application/json'})
-    return r.status_code, r.json()
+    if r.status_code == 200:
+        return r.json()
+    else:
+        print(f"Error calling api, status code {sc}: {resp}")
 
 list_bills_schema = {
     "name": "list_bills",
@@ -49,17 +52,14 @@ list_bills_schema = {
     }
 }
 
-def list_bills(offset:int=0, limit:int=250, fromDate: str=None, toDate:str=None, congress:int=None) -> list[map]:
+def list_bills(offset:int=0, limit:int=250, fromDate: str=None, toDate:str=None, congress:int=None) -> list[dict]:
     """List the bills considered by Congress."""
     if congress is None:
         endpoint = "bill"
     else:
         endpoint = f"bill/{congress}"
-    sc, resp = call_endpoint(endpoint, {"offset": offset, "limit": limit, "fromDateTime": fromDate, "toDateTime": toDate})
-    if sc == 200:
-        return resp['bills']
-    else:
-        print(f"Error calling api, status code {sc}: {resp}")
+    resp = call_endpoint(endpoint, {"offset": offset, "limit": limit, "fromDateTime": fromDate, "toDateTime": toDate})
+    return resp['bills']
 
 get_bill_schema = {
     "name": "get_bill",
@@ -79,11 +79,38 @@ get_bill_schema = {
     }
 }
 
-def get_bill(congress:int, billType: str, billNumber: int) -> map:
+def get_bill(congress:int, billType: str, billNumber: int) -> dict:
     """get information about a specific bill"""
     endpoint = f"/bill/{congress}/{billType}/{billNumber}"
-    sc, resp = call_endpoint(endpoint)
-    if sc == 200:
-        return resp
-    else:
-        print(f"Error calling api, status code {sc}: {resp}")
+    resp = call_endpoint(endpoint)
+    return resp
+
+get_members_schema = {
+    "name": "get_members",
+    "description": "Gets a list of members of congress",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "congress": {"type": "integer",
+                         "description": "search by a specific congress"},
+            "state": {"type": "string",
+                      "description": "Two letter identifier for the state"},
+            "district": {"type": "integer",
+                         "description": "The district number. Can only be specified if the state is also set"},
+            "current": {"type": "boolean",
+                        "description": "Whether to only return current members"}
+        }
+    }
+}
+
+def get_members(congress:int=None, state:str=None, district:int=None, current:int=True) -> list[dict]:
+    """Get a list of members"""
+    endpoint = "/member"
+    if congress is not None:
+        endpoint += f"/congress/{congress}"
+    if state is not None:
+        endpoint += f"/{state}"
+        if district is not None:
+            endpoint += f"/{district}"
+    resp = call_endpoint(endpoint, {"currentMember": current})
+    return resp["members"]

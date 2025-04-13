@@ -3,15 +3,17 @@ from google import genai
 from google.genai import types
 import congress
 
-INSTRUCTION = """You are a helpful chatbot designed to help the user learn about bills in front of congress. 
-You will use the congressional api to access information about these bills. Call list_bills to get a list of bills.
+INSTRUCTION = """You are a helpful chatbot designed to help the user learn about the activities congress. 
+You will use the congressional api to access information about bills and members of congress.
+If you don't know what value to include for an optional parameter, don't include anything.
 For any object in a response that contains a url, call call_endpoint to get more information on it"""
 
 MODEL = "gemini-2.0-flash"
 
 FUNCTIONS = [
     (congress.list_bills_schema, congress.list_bills),
-    (congress.call_endpoint_schema, congress.call_endpoint)
+    (congress.call_endpoint_schema, congress.call_endpoint),
+    (congress.get_members_schema, congress.get_members)
 ]
 
 class CongressAgent:
@@ -45,14 +47,9 @@ class CongressAgent:
                 function = self.functions[function_name]
                 args = tool_call.args
                 print(f"-- calling {function_name}(**{args})")
-                try:
-                    result = function(**args)
-                    result_part = types.Part.from_function_response(name=function_name,
-                                                                    response={"result": result})
-                    contents.append(types.Content(role="user", parts=[result_part]))
-                except Exception as e:
-                    exception_part = types.Part.from_function_response(name=function_name,
-                                                                       response={"exception": str(e)})
-                    contents.append(types.Content(role="user", parts=[e]))
+                result = function(**args)
+                result_part = types.Part.from_function_response(name=function_name,
+                                                                response={"result": result})
+                contents.append(types.Content(role="user", parts=[result_part]))
                 resp = self.gen_content(contents)
             print(resp.text)
