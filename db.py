@@ -76,7 +76,10 @@ query_bill_summaries_schema = {
     "parameters": {
         "type": "object",
         "properties": {
-            "query": {"type": "string", "description": "A natural language query to use to find relevant bills"},
+            "query": {"type": "string",
+                      "description": "A natural language query to use to find relevant bills. "+
+                      "It will return a map with the bill summary, the congress, bill type, bill number"+
+                      ", and the endpoint you can access it with the api"},
             "n": {"type": "integer", "description": "the number of results to return"},
             "congress": {"type": "integer", "description": "use this to restrict results to a single congress"},
             "bill_type": {"type": "string", "description": "use this to restrict results to a single bill type",
@@ -116,11 +119,16 @@ class VectorDB:
             where['congress']=congress
         if bill_type is not None:
             where['type']=bill_type
-        results = db.query(query_texts=query, n_results=n, where=where or None, include=["documents", "metadatas"])
-        return [
-            {"bill_summary": doc, "congress": metadata["congress"],
-             "bill_type": metadata["type"], "bill_number": metadata["number"]}
-            for doc, metadata in zip(results['documents'][0], results['metadatas'][0])]
+        query_results = db.query(query_texts=query, n_results=n, where=where or None, include=["documents", "metadatas"])
+        results = []
+        for doc, metadata in zip(query_results['documents'][0], query_results['metadatas'][0]):
+            congress = metadata["congress"]
+            bill_type = metadata["type"]
+            bill_number = metadata["number"]
+            endpoint = f"/bill/{congress}/{bill_type}/{bill_number}"
+            results.append({"bill_summary": doc, "congress": congress, "bill_type": bill_type,
+                            "bill_number": bill_number, "endpoint": endpoint})
+        return results
 
 def load(db_path:str, congress:int):
     load_dotenv(find_dotenv())
