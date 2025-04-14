@@ -29,7 +29,7 @@ def call_endpoint(endpoint:str, params:dict[str,str]={}) -> dict:
     if r.status_code == 200:
         return r.json()
     else:
-        print(f"Error calling api, status code {sc}: {resp}")
+        print(f"Error calling api, status code {r.status_code}: {r.text}")
 
 list_bills_schema = {
     "name": "list_bills",
