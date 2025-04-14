@@ -2,6 +2,7 @@ import os
 from google import genai
 from google.genai import types
 import congress
+import db
 
 INSTRUCTION = """You are a helpful chatbot designed to help the user learn about the activities congress. 
 You will use the congressional api to access information about bills and members of congress.
@@ -16,14 +17,22 @@ FUNCTIONS = [
     (congress.get_members_schema, congress.get_members)
 ]
 
+DB_METHODS = [
+    db.query_bill_summaries_schema
+]
+
 class CongressAgent:
     """
-    Agent for interacting with congress APIf
+    Agent for interacting with congress API
     """
-    def __init__(self, instruction=INSTRUCTION, model=MODEL):
-        tools = types.Tool(function_declarations=[schema for (schema, _) in FUNCTIONS])
-        self.functions = {schema['name']: function for schema, function in FUNCTIONS}
+    def __init__(self, instruction=INSTRUCTION, model=MODEL, db_path=".chroma"):
         self.client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+        self.db = db.VectorDB(db_path, self.client)
+        self.functions = {schema['name']: function for schema, function in FUNCTIONS}
+        for method in DB_METHODS:
+            self.functions[method['name']] = getattr(self.db, method['name'])
+        function_tools = [schema for (schema, _) in FUNCTIONS]
+        tools = types.Tool(function_declarations=function_tools+DB_METHODS)
         self.config = types.GenerateContentConfig(system_instruction=instruction, tools = [tools])
         self.model = model
 

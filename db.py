@@ -70,9 +70,25 @@ def load_docs(type: str, congress:int, load_path:str, id_path:str,
 
 BILL_SUMMARY_TABLE="billsummaries"
 
+query_bill_summaries_schema = {
+    "name": "query_bill_summaries",
+    "description": "Finds bill summaries relevant to a given query",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "A natural language query to use to find relevant bills"},
+            "n": {"type": "integer", "description": "the number of results to return"},
+            "congress": {"type": "integer", "description": "use this to restrict results to a single congress"},
+            "bill_type": {"type": "string", "description": "use this to restrict results to a single bill type",
+                          "enum": ["hr", "s", "hjres", "sjres", "hconres", "sconres", "hres", "sres"]}
+        },
+        "required": ["query", "n"]
+    }
+}
+
 class VectorDB:
-    def __init__(self, db_client: chromadb.api.client.Client, ai_client: genai.Client, doc_mode: bool=True):
-        self.db_client = db_client
+    def __init__(self, db_path: str, ai_client: genai.Client, doc_mode: bool=True):
+        self.db_client = chromadb.PersistentClient(path=db_path)
         self.embed_fn = Embedder(doc_mode, ai_client)
 
     def load_bill_summaries(self, congress:int):
@@ -100,7 +116,7 @@ class VectorDB:
             where['congress']=congress
         if bill_type is not None:
             where['type']=bill_type
-        results = db.query(query_texts=query, n_results=n, where=where)
+        results = db.query(query_texts=query, n_results=n, where=where or None, include=["documents", "metadatas"])
         return [
             {"bill_summary": doc, "congress": metadata["congress"],
              "bill_type": metadata["type"], "bill_number": metadata["number"]}
@@ -108,7 +124,6 @@ class VectorDB:
 
 def load(db_path:str, congress:int):
     load_dotenv(find_dotenv())
-    db_client = chromadb.PersistentClient(path=db_path)
     ai_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-    db = VectorDB(db_client, ai_client)
+    db = VectorDB(db_path, ai_client)
     db.load_bill_summaries(congress)
