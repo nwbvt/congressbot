@@ -1,4 +1,5 @@
 import requests
+import os
 import html
 from google import genai
 from google.genai import types
@@ -6,6 +7,7 @@ import chromadb
 from chromadb import Documents, EmbeddingFunction, Embeddings
 from google.api_core import retry
 from lxml import etree
+from dotenv import load_dotenv, find_dotenv
 
 BULK_URL = "https://www.govinfo.gov/bulkdata/json"
 
@@ -13,8 +15,9 @@ def is_retriable(e):
     return isinstance(e, genai.errors.APIError) and e.code in {429, 503}
 
 class Embedder(EmbeddingFunction):
-    def __init__(self, doc_mode):
+    def __init__(self, doc_mode, client):
         self.doc_mode = doc_mode
+        self.client = client
 
     def set_query(self):
         self.doc_mode = False
@@ -22,12 +25,12 @@ class Embedder(EmbeddingFunction):
     @retry.Retry(predicate=is_retriable)
     def __call__(self, to_embed: Documents) -> Embeddings:
         task = "retrieval_document" if self.doc_mode else "retrieval_query"
-        resp = client.models.embed_content(
+        resp = self.client.models.embed_content(
                 model="models/text-embedding-004",
                 contents=to_embed,
                 config=types.EmbedContentConfig(task_type=task)
         )
-        return [e.values for e in response.emebddings]
+        return [e.values for e in resp.embeddings]
 
 def load_doc(url:str, load_path:str, id_path:str,
              metadata_paths:dict[str,str])->tuple[str, str, dict[str,str]]:
@@ -70,9 +73,15 @@ def load_bill_summaries(db_client: chromadb.api.client.Client, ai_client: genai.
     """Load the bills from the bulk data source"""
     documents = load_docs("BILLSUM", congress, "item/summary/summary-text", "item/@measure-id",
                           {'congress': 'item/@congress', 'type': 'item/@measure-type', 'number': 'item/@measure-number'})
-    embed_fn = Embedder(True)
+    embed_fn = Embedder(True, ai_client)
     db = db_client.get_or_create_collection(name=BILL_SUMMARY_TABLE, embedding_function=embed_fn)
-    docs, ids, metadata = zip(*documents)
-    db.add(documents=docs, metadatas=metadata, ids=ids)
+    for doc, id, metadata in documents:
+        db.add(documents=doc, metadatas=metadata, ids=id)
     embed_fn.set_query()
     return db
+
+def load(db_path:str, congress:int):
+    load_dotenv(find_dotenv())
+    db_client = chromadb.PersistentClient(path=db_path)
+    ai_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+    load_bill_summaries(db_client, ai_client, congress)
