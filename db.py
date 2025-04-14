@@ -19,8 +19,11 @@ class Embedder(EmbeddingFunction):
         self.doc_mode = doc_mode
         self.client = client
 
-    def set_query(self):
+    def set_query_mode(self):
         self.doc_mode = False
+
+    def set_doc_mode(self):
+        self.doc_mode = True
 
     @retry.Retry(predicate=is_retriable)
     def __call__(self, to_embed: Documents) -> Embeddings:
@@ -50,17 +53,15 @@ def recursive_load(url:str, load_path:str, id_path:str,
                    metadata_paths:dict[str,str])->list[tuple[str, str, dict[str,str]]]:
     print(f"Loading from {url}")
     resp = requests.get(url, headers={"accept": "application/json"})
-    docs = []
     if resp.status_code != 200:
         print(f"Error getting documents: {resp.status_code}\n{resp.text}")
-        return []
+        return
     for f in resp.json()['files']:
         if f['folder']:
-            docs += recursive_load(f['link'], load_path, id_path, metadata_paths)
+            for doc in recursive_load(f['link'], load_path, id_path, metadata_paths):
+                yield doc
         elif f['mimeType'] == 'application/xml':
-            doc, doc_id, md = load_doc(f['link'], load_path, id_path, metadata_paths)
-            docs.append((doc, doc_id, md))
-    return docs
+            yield load_doc(f['link'], load_path, id_path, metadata_paths)
 
 def load_docs(type: str, congress:int, load_path:str, id_path:str,
               metadata_paths:dict[str,str])->list[tuple[str, str, dict[str,str]]]:
@@ -69,19 +70,45 @@ def load_docs(type: str, congress:int, load_path:str, id_path:str,
 
 BILL_SUMMARY_TABLE="billsummaries"
 
-def load_bill_summaries(db_client: chromadb.api.client.Client, ai_client: genai.Client, congress:int):
-    """Load the bills from the bulk data source"""
-    documents = load_docs("BILLSUM", congress, "item/summary/summary-text", "item/@measure-id",
-                          {'congress': 'item/@congress', 'type': 'item/@measure-type', 'number': 'item/@measure-number'})
-    embed_fn = Embedder(True, ai_client)
-    db = db_client.get_or_create_collection(name=BILL_SUMMARY_TABLE, embedding_function=embed_fn)
-    for doc, id, metadata in documents:
-        db.add(documents=doc, metadatas=metadata, ids=id)
-    embed_fn.set_query()
-    return db
+class VectorDB:
+    def __init__(self, db_client: chromadb.api.client.Client, ai_client: genai.Client, doc_mode: bool=True):
+        self.db_client = db_client
+        self.embed_fn = Embedder(doc_mode, ai_client)
+
+    def load_bill_summaries(self, congress:int):
+        """Load the bills from the bulk data source"""
+        documents = load_docs("BILLSUM", congress, "item/summary/summary-text", "item/@measure-id",
+                              {'congress': 'item/@congress', 'type': 'item/@measure-type', 'number': 'item/@measure-number'})
+        db = self.db_client.get_or_create_collection(name=BILL_SUMMARY_TABLE, embedding_function=self.embed_fn)
+        self.embed_fn.set_doc_mode()
+        i=0
+        for doc, id, metadata in documents:
+            db.add(documents=doc, metadatas=metadata, ids=id)
+            i+=1
+            print(f"Inserted {i} documents", end="\r")
+        return db
+
+    def query_bill_summaries(self, query:str, n:int, congress:int=None, bill_type:str=None):
+        """Query the bill summaries"""
+        try:
+            db = self.db_client.get_collection(BILL_SUMMARY_TABLE, embedding_function=self.embed_fn)
+        except chromadb.errors.NotFoundError:
+            print("Error: bill summaries not loaded")
+            return []
+        where = {}
+        if congress is not None:
+            where['congress']=congress
+        if bill_type is not None:
+            where['type']=bill_type
+        results = db.query(query_texts=query, n_results=n, where=where)
+        return [
+            {"bill_summary": doc, "congress": metadata["congress"],
+             "bill_type": metadata["type"], "bill_number": metadata["number"]}
+            for doc, metadata in zip(results['documents'][0], results['metadatas'][0])]
 
 def load(db_path:str, congress:int):
     load_dotenv(find_dotenv())
     db_client = chromadb.PersistentClient(path=db_path)
     ai_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-    load_bill_summaries(db_client, ai_client, congress)
+    db = VectorDB(db_client, ai_client)
+    db.load_bill_summaries(congress)
