@@ -14,7 +14,8 @@ MODEL = "gemini-2.0-flash"
 FUNCTIONS = [
     (congress.list_bills_schema, congress.list_bills),
     (congress.call_endpoint_schema, congress.call_endpoint),
-    (congress.get_members_schema, congress.get_members)
+    (congress.get_members_schema, congress.get_members),
+    (congress.get_bill_text_schema, congress.get_bill_text)
 ]
 
 DB_METHODS = [

@@ -85,6 +85,44 @@ def get_bill(congress:int, billType: str, billNumber: int) -> dict:
     resp = call_endpoint(endpoint)
     return resp
 
+get_bill_text_schema = {
+    "name": "get_bill_text",
+    "description": "Gets the bill text",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "congress": {"type": "integer",
+                         "description": "the number of the congress which considered the bill"},
+            "billType": {"type": "string",
+                         "description": "the type of bill",
+                         "enum": ["hr", "s", "hjres", "sjres", "hconres", "sconres", "hres", "sres"]},
+            "billNumber": {"type": "integer",
+                           "description": "the bill number"},
+            "asOf": {"type": "string",
+                     "description": "set this to a date in YYYY/MM/DD format if you want to get the text before that date"}
+        },
+        "required": ["congress", "billType", "billNumber"]
+    }
+}
+
+def get_bill_text(congress:int, billType: str, billNumber:int, asOf:str=None, format="Formatted XML") -> str:
+    """get the bill text"""
+    endpoint = f"/bill/{congress}/{billType}/{billNumber}/text"
+    resp = call_endpoint(endpoint)
+    versions = resp['textVersions']
+    if asOf is not None:
+        versions = [v for v in versions if v['date'] <= asOf]
+    versions.sort(key=lambda x: x['date'], reverse=True)
+    formats = versions[0]['formats']
+    for text_format in formats:
+        if text_format['type'] == format:
+            resp = requests.get(text_format['url'])
+            if resp.status_code == 200:
+                return resp.text
+            else:
+                print(f"Error {resp.status_code}: {resp.text}")
+    print(f"Only found formats {formats}")
+
 get_members_schema = {
     "name": "get_members",
     "description": "Gets a list of members of congress",
