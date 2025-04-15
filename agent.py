@@ -44,10 +44,14 @@ class CongressAgent:
             model=self.model, config=self.config, contents=contents
         ).candidates[0].content.parts[0]
 
-    def run(self):
+    def run(self, commands=[]):
         contents = []
         while True:
-            s = input("-->")
+            if len(commands) > 0:
+                s = commands[0]
+                commands = commands[1:]
+            else:
+                s = input("-->")
             if s == 'q':
                 return
             contents.append(types.Content(role="user", parts=[types.Part(text=s)]))
