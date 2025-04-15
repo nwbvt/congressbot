@@ -113,6 +113,8 @@ def get_bill_text(congress:int, billType: str, billNumber:int, asOf:str=None, fo
     if asOf is not None:
         versions = [v for v in versions if v['date'] <= asOf]
     versions.sort(key=lambda x: x['date'], reverse=True)
+    if len(versions) == 0:
+        return []
     formats = versions[0]['formats']
     for text_format in formats:
         if text_format['type'] == format:
