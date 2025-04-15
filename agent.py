@@ -26,7 +26,7 @@ class CongressAgent:
     """
     Agent for interacting with congress API
     """
-    def __init__(self, instruction=INSTRUCTION, model=MODEL, db_path=".chroma"):
+    def __init__(self, instruction=INSTRUCTION, model=MODEL, db_path=".chroma", temperature=1.0):
         self.client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
         self.db = db.VectorDB(db_path, self.client)
         self.functions = {schema['name']: function for schema, function in FUNCTIONS}
@@ -34,7 +34,9 @@ class CongressAgent:
             self.functions[method['name']] = getattr(self.db, method['name'])
         function_tools = [schema for (schema, _) in FUNCTIONS]
         tools = types.Tool(function_declarations=function_tools+DB_METHODS)
-        self.config = types.GenerateContentConfig(system_instruction=instruction, tools = [tools])
+        self.config = types.GenerateContentConfig(system_instruction=instruction,
+                                                  tools = [tools],
+                                                  temperature=temperature)
         self.model = model
 
     def gen_content(self, contents):
