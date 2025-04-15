@@ -1,4 +1,5 @@
 import requests
+import datetime
 import os
 import html
 from google import genai
@@ -35,8 +36,8 @@ class Embedder(EmbeddingFunction):
         )
         return [e.values for e in resp.embeddings]
 
-def load_doc(url:str, load_path:str, id_path:str,
-             metadata_paths:dict[str,str])->tuple[str, str, dict[str,str]]:
+def load_doc(url:str, load_path:str, id_path:str, metadata_paths:dict[str,str],
+             since:str=None)->tuple[str, str, dict[str,str]]:
     resp = requests.get(url)
     body = ""
     metadata = {}
@@ -49,8 +50,11 @@ def load_doc(url:str, load_path:str, id_path:str,
             metadata[key] = tree.xpath(metadata_paths[key])[0]
     return body, doc_id, metadata
 
-def recursive_load(url:str, load_path:str, id_path:str,
-                   metadata_paths:dict[str,str])->list[tuple[str, str, dict[str,str]]]:
+## I don't know why they can't use the ISO standard datetime format, but I guess that would make it too easy...
+DATE_FORMAT='%d-%b-%Y %H:%M'
+
+def recursive_load(url:str, load_path:str, id_path:str, metadata_paths:dict[str,str],
+                   since:datetime.datetime=None)->list[tuple[str, str, dict[str,str]]]:
     print(f"Loading from {url}")
     resp = requests.get(url, headers={"accept": "application/json"})
     if resp.status_code != 200:
@@ -58,15 +62,18 @@ def recursive_load(url:str, load_path:str, id_path:str,
         return
     for f in resp.json()['files']:
         if f['folder']:
-            for doc in recursive_load(f['link'], load_path, id_path, metadata_paths):
+            for doc in recursive_load(f['link'], load_path, id_path, metadata_paths, since):
                 yield doc
         elif f['mimeType'] == 'application/xml':
-            yield load_doc(f['link'], load_path, id_path, metadata_paths)
+            if since is not None:
+                if datetime.datetime.strptime(f['formattedLastModifiedTime'], DATE_FORMAT) < since:
+                    continue
+            yield load_doc(f['link'], load_path, id_path, metadata_paths, since)
 
 def load_docs(type: str, congress:int, load_path:str, id_path:str,
-              metadata_paths:dict[str,str])->list[tuple[str, str, dict[str,str]]]:
+              metadata_paths:dict[str,str], since:datetime.datetime=None)->list[tuple[str, str, dict[str,str]]]:
     url = f"{BULK_URL}/{type}/{congress}"
-    return recursive_load(url, load_path, id_path, metadata_paths)
+    return recursive_load(url, load_path, id_path, metadata_paths, since=since)
 
 BILL_SUMMARY_TABLE="billsummaries"
 
@@ -94,10 +101,11 @@ class VectorDB:
         self.db_client = chromadb.PersistentClient(path=db_path)
         self.embed_fn = Embedder(doc_mode, ai_client)
 
-    def load_bill_summaries(self, congress:int):
+    def load_bill_summaries(self, congress:int, since:datetime.datetime=None):
         """Load the bills from the bulk data source"""
         documents = load_docs("BILLSUM", congress, "item/summary/summary-text", "item/@measure-id",
-                              {'congress': 'item/@congress', 'type': 'item/@measure-type', 'number': 'item/@measure-number'})
+                              {'congress': 'item/@congress', 'type': 'item/@measure-type', 'number': 'item/@measure-number'},
+                              since=since)
         db = self.db_client.get_or_create_collection(name=BILL_SUMMARY_TABLE, embedding_function=self.embed_fn)
         self.embed_fn.set_doc_mode()
         i=0
@@ -130,8 +138,8 @@ class VectorDB:
                             "bill_number": bill_number, "endpoint": endpoint})
         return results
 
-def load(db_path:str, congress:int):
+def load(db_path:str, congress:int, since:datetime.datetime=None):
     load_dotenv(find_dotenv())
     ai_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
     db = VectorDB(db_path, ai_client)
-    db.load_bill_summaries(congress)
+    db.load_bill_summaries(congress, since)

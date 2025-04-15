@@ -28,7 +28,7 @@ class CongressAgent:
     """
     def __init__(self, instruction=INSTRUCTION, model=MODEL, db_path=".chroma", temperature=1.0):
         self.client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-        self.db = db.VectorDB(db_path, self.client)
+        self.db = db.VectorDB(db_path, self.client, False)
         self.functions = {schema['name']: function for schema, function in FUNCTIONS}
         for method in DB_METHODS:
             self.functions[method['name']] = getattr(self.db, method['name'])
