@@ -1,3 +1,4 @@
+import readline
 import os
 from google import genai
 from google.genai import types
@@ -26,7 +27,7 @@ class CongressAgent:
     """
     Agent for interacting with congress API
     """
-    def __init__(self, instruction=INSTRUCTION, model=MODEL, db_path=".chroma", temperature=1.0):
+    def __init__(self, instruction=INSTRUCTION, model=MODEL, db_path=".chroma", temperature=1.0, verbose=False):
         self.client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
         self.db = db.VectorDB(db_path, self.client, False)
         self.functions = {schema['name']: function for schema, function in FUNCTIONS}
@@ -38,6 +39,7 @@ class CongressAgent:
                                                   tools = [tools],
                                                   temperature=temperature)
         self.model = model
+        self.verbose = verbose
 
     def gen_content(self, contents):
         return self.client.models.generate_content(
@@ -51,7 +53,7 @@ class CongressAgent:
                 s = commands[0]
                 commands = commands[1:]
             else:
-                s = input("-->")
+                s = input("--> ")
             if s == 'q':
                 return
             contents.append(types.Content(role="user", parts=[types.Part(text=s)]))
@@ -62,7 +64,8 @@ class CongressAgent:
                 function_name = tool_call.name
                 function = self.functions[function_name]
                 args = tool_call.args
-                print(f"-- calling {function_name}(**{args})")
+                if self.verbose:
+                    print(f"-- calling {function_name}(**{args})")
                 result = function(**args)
                 result_part = types.Part.from_function_response(name=function_name,
                                                                 response={"result": result})
